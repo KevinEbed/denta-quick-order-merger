@@ -14,7 +14,7 @@ st.set_page_config(page_title="Denta Quick Merger", page_icon="🦷", layout="ce
 # LOGO + HEADER
 # ----------------------------
 if os.path.exists("DentaQuickEgypt.png"):
-    logo = Image.open("logo.png")
+    logo = Image.open("DentaQuickEgypt.png")
     st.image(logo)
 
 st.markdown("<h2 style='text-align: center; color: #3B7A57;'>🦷 Denta Quick – Branch Order Merger</h2>", unsafe_allow_html=True)
