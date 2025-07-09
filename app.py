@@ -7,7 +7,7 @@ from PIL import Image
 st.set_page_config(page_title="Denta Quick", page_icon="🦷", layout="centered")
 
 # Show logo and app title
-logo = Image.open("DentaQuickEgypt.png")
+logo = Image.open("DentaQuickEgypt.webp")
 st.image(logo, width=180)
 
 st.markdown("<h2 style='text-align: center; color: #3B7A57;'>🦷 Denta Quick – Branch Order Merger</h2>", unsafe_allow_html=True)
