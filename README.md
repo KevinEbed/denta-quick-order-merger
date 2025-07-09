@@ -1,31 +1,20 @@
-# 📦 Order Merger App
+# 🦷 Denta Quick – Branch Order Merger
 
-This is a simple Streamlit web app that lets users upload two Excel or CSV order files and merges them based on item names to calculate total quantities.
-
----
-
-## 🔧 Features
-
-- Upload two order files from different branches
-- Merges by item name (Arabic column: `الصنف`)
-- Sums quantities (Arabic column: `الكمية`)
-- Exports result as downloadable Excel file
-- Clean and user-friendly interface
+A simple, user-friendly Streamlit app for merging and analyzing Excel orders from multiple dental branches. Designed for **internal use by Denta Quick** and compatible with Excel files exported from your branch order system.
 
 ---
 
-## 📂 File Requirements
+## 🚀 Features
 
-Each Excel or CSV file must have:
-- A column called **`الصنف`** (Item)
-- A column called **`الكمية`** (Quantity)
+- ✅ Upload two Excel files: **Old Orders** and **(optional) New Orders**
+- 📊 Each file may contain **multiple sheets** (one per branch)
+- 🔁 Automatically **merges items by name**
+- 🧾 Displays:
+  - Old Order Quantities
+  - New Order Quantities
+  - **Total Quantity**
+  - **Item Price (السعر)** (if available in any sheet)
+- 📥 Download final report as Excel
+- 🖼️ Custom branded with Denta Quick logo
 
 ---
-
-## ▶️ How to Run Locally
-
-1. Clone the repo:
-
-```bash
-git clone https://github.com/yourusername/order-merger-app.git
-cd order-merger-app
