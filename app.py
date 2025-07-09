@@ -15,7 +15,7 @@ st.set_page_config(page_title="Denta Quick Merger", page_icon="🦷", layout="ce
 # ----------------------------
 if os.path.exists("DentaQuickEgypt.png"):
     logo = Image.open("DentaQuickEgypt.png")
-    st.image(logo)
+    st.image(logo, width=180)
 
 st.markdown("<h2 style='text-align: center; color: #3B7A57;'>🦷 Denta Quick – Branch Order Merger</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center;'>Upload old and (optionally) new branch order Excel files. Each sheet must start from row 15 and include columns: <strong>الصنف</strong> and <strong>الكمية</strong>.</p>", unsafe_allow_html=True)
@@ -64,54 +64,52 @@ if old_file:
         old_merged = merge_sheets(old_sheets)
 
         if not old_merged.empty:
+            # 🔹 Step 2: Show OLD Summary
+            old_cols = [col for col in old_merged.columns if col != 'الصنف']
+            old_merged['Old Quantity'] = old_merged[old_cols].sum(axis=1)
+            old_merged['الصنف'] = old_merged['الصنف'].str.title()
+            df_old_summary = old_merged[['الصنف', 'Old Quantity']]
+            df_old_summary = df_old_summary.sort_values(by='Old Quantity', ascending=False)
+
+            st.subheader("📋 Step 2: Summary of OLD Orders")
+            st.dataframe(df_old_summary, use_container_width=True)
+
             if new_file:
                 new_sheets = process_multisheet_excel(new_file)
                 new_merged = merge_sheets(new_sheets)
 
-                combined = pd.merge(old_merged, new_merged, on='الصنف', how='outer').fillna(0)
+                if not new_merged.empty:
+                    # 🔹 Step 3: Show NEW Summary
+                    new_cols = [col for col in new_merged.columns if col != 'الصنف']
+                    new_merged['New Quantity'] = new_merged[new_cols].sum(axis=1)
+                    new_merged['الصنف'] = new_merged['الصنف'].str.title()
+                    df_new_summary = new_merged[['الصنف', 'New Quantity']]
+                    df_new_summary = df_new_summary.sort_values(by='New Quantity', ascending=False)
 
-                # 🔍 DEBUG OUTPUT
-                st.subheader("🧪 Debug Preview of Combined Items")
-                st.write("Combined column names:", combined.columns.tolist())
-                st.dataframe(combined.head(10))
+                    st.subheader("📋 Step 3: Summary of NEW Orders")
+                    st.dataframe(df_new_summary, use_container_width=True)
 
-                # Correctly map column names
-                old_cols = [col for col in old_merged.columns if col != 'الصنف' and col in combined.columns]
-                new_cols = [col for col in new_merged.columns if col != 'الصنف' and col in combined.columns]
+                    # 🔹 Step 4: Merge both summaries
+                    combined = pd.merge(df_old_summary, df_new_summary, on='الصنف', how='outer').fillna(0)
+                    combined['Total Quantity'] = combined['Old Quantity'] + combined['New Quantity']
+                    combined = combined.sort_values(by='Total Quantity', ascending=False)
 
-                # Summary columns
-                combined['Old Quantity'] = combined[old_cols].sum(axis=1)
-                combined['New Quantity'] = combined[new_cols].sum(axis=1)
-                combined['Total Quantity'] = combined['Old Quantity'] + combined['New Quantity']
-                combined['الصنف'] = combined['الصنف'].str.title()
+                    st.subheader("📋 Step 4: Summary of OLD + NEW Orders")
+                    st.dataframe(combined, use_container_width=True)
 
-                final_df = combined[['الصنف', 'Old Quantity', 'New Quantity', 'Total Quantity']]
-                st.subheader("📋 Step 2: Summary of Old + New Orders")
-
-            else:
-                old_cols = [col for col in old_merged.columns if col != 'الصنف']
-                old_merged['Old Quantity'] = old_merged[old_cols].sum(axis=1)
-                old_merged['الصنف'] = old_merged['الصنف'].str.title()
-                final_df = old_merged[['الصنف', 'Old Quantity']]
-                st.subheader("📋 Step 2: Summary of OLD Orders Only")
-
-            final_df = final_df.sort_values(by=final_df.columns[-1], ascending=False)
-            st.dataframe(final_df, use_container_width=True)
-
-            # ----------------------------
-            # DOWNLOAD EXCEL
-            # ----------------------------
-            excel_data = to_excel(final_df)
-            st.subheader("📥 Step 3: Download Excel Report")
-            st.download_button(
-                label="⬇️ Download Excel File",
-                data=excel_data,
-                file_name="Merged_Orders_Summary.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
+                    # 🔹 Step 5: Download
+                    excel_data = to_excel(combined)
+                    st.subheader("📥 Step 5: Download Merged Excel Report")
+                    st.download_button(
+                        label="⬇️ Download Excel File",
+                        data=excel_data,
+                        file_name="Merged_Orders_Summary.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning("⚠️ The NEW file didn’t contain valid data sheets.")
         else:
-            st.warning("⚠️ The uploaded OLD file doesn't contain any sheets with the required columns.")
+            st.warning("⚠️ The OLD file didn’t contain valid data sheets.")
 
     except Exception as e:
         st.error("❌ Error while processing the uploaded files.")
