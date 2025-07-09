@@ -37,5 +37,5 @@ A simple, user-friendly Streamlit app for merging and analyzing Excel orders fro
 
 1. Clone the repo:
    ```bash
-   git clone https://github.com/your-username/denta-quick-order-merger.git
+   git clone https://github.com/KevinEbed/denta-quick-order-merger.git
    cd denta-quick-order-merger
