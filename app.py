@@ -2,20 +2,28 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-st.set_page_config(page_title="Order Merger Tool", layout="wide")
-st.title("📦 Order Merger Tool")
+# Page setup
+st.set_page_config(page_title="Branch Order Merger", page_icon="📦", layout="centered")
 
-st.markdown("Upload two order files (Excel or CSV) from different branches. This app will combine them by item and show total quantities.")
+# Header
+st.markdown("""
+    <h1 style='text-align: center; color: #3B7A57;'>📦 Branch Order Merger</h1>
+    <p style='text-align: center;'>Easily merge order files from multiple branches and generate a clean summary report.</p>
+""", unsafe_allow_html=True)
 
-# File upload
-file1 = st.file_uploader("Upload First Order File", type=["xlsx", "xls", "csv"])
-file2 = st.file_uploader("Upload Second Order File", type=["xlsx", "xls", "csv"])
+st.divider()
 
-def read_file(uploaded_file):
-    if uploaded_file.name.endswith('.csv'):
-        return pd.read_csv(uploaded_file)
+# Upload section
+st.subheader("Step 1: Upload Your Order Files")
+
+file1 = st.file_uploader("🗂️ Upload First Branch Order (Excel or CSV)", type=["xlsx", "xls", "csv"])
+file2 = st.file_uploader("🗂️ Upload Second Branch Order (Excel or CSV)", type=["xlsx", "xls", "csv"])
+
+def read_file(file):
+    if file.name.endswith('.csv'):
+        return pd.read_csv(file)
     else:
-        return pd.read_excel(uploaded_file)
+        return pd.read_excel(file)
 
 if file1 and file2:
     try:
@@ -33,26 +41,31 @@ if file1 and file2:
         merged['Second Order Quantity'] = merged['Second Order Quantity'].astype(int)
         merged['Total Quantity'] = merged['First Order Quantity'] + merged['Second Order Quantity']
         merged['Item'] = merged['Item'].str.title()
-        merged = merged[['Item', 'First Order Quantity', 'Second Order Quantity', 'Total Quantity']]
 
-        st.success("✅ Files merged successfully!")
-        st.dataframe(merged)
+        final = merged[['Item', 'First Order Quantity', 'Second Order Quantity', 'Total Quantity']]
 
-        # Export to Excel
+        st.success("✅ Orders merged successfully!")
+
+        st.subheader("Step 2: Preview Merged Report")
+        st.dataframe(final, use_container_width=True)
+
+        # Excel export
         def to_excel(df):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False)
             return output.getvalue()
 
-        excel_data = to_excel(merged)
+        excel_data = to_excel(final)
 
+        st.subheader("Step 3: Download Your Merged Report")
         st.download_button(
-            label="📥 Download Combined Orders Excel",
+            label="📥 Download Excel File",
             data=excel_data,
-            file_name="Combined_Orders.xlsx",
+            file_name="Merged_Branch_Orders.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
     except Exception as e:
-        st.error(f"Something went wrong: {e}")
+        st.error("⚠️ Something went wrong. Please check your files.")
+        st.exception(e)
