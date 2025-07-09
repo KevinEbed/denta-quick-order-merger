@@ -18,7 +18,7 @@ if os.path.exists("DentaQuickEgypt.png"):
     st.image(logo)
 
 st.markdown("<h2 style='text-align: center; color: #3B7A57;'>🦷 Denta Quick – Branch Order Merger</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Upload old and (optional) new branch order Excel files. Each sheet must start from row 15 and include columns: <strong>الصنف</strong> and <strong>الكمية</strong>.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Upload old and (optionally) new branch order Excel files. Each sheet must start from row 15 and include columns: <strong>الصنف</strong> and <strong>الكمية</strong>.</p>", unsafe_allow_html=True)
 st.divider()
 
 # ----------------------------
@@ -68,10 +68,14 @@ if old_file:
                 new_sheets = process_multisheet_excel(new_file)
                 new_merged = merge_sheets(new_sheets)
 
-                # Merge old + new into combined
                 combined = pd.merge(old_merged, new_merged, on='الصنف', how='outer').fillna(0)
 
-                # Recalculate column names from final combined
+                # 🔍 DEBUG OUTPUT
+                st.subheader("🧪 Debug Preview of Combined Items")
+                st.write("Combined column names:", combined.columns.tolist())
+                st.dataframe(combined.head(10))
+
+                # Correctly map column names
                 old_cols = [col for col in old_merged.columns if col != 'الصنف' and col in combined.columns]
                 new_cols = [col for col in new_merged.columns if col != 'الصنف' and col in combined.columns]
 
