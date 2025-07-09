@@ -18,3 +18,24 @@ A simple, user-friendly Streamlit app for merging and analyzing Excel orders fro
 - 🖼️ Custom branded with Denta Quick logo
 
 ---
+
+## 📁 File Requirements
+
+- Format: `.xlsx` Excel file
+- Each sheet represents a branch order
+- Must include these columns (starting from **row 15**):
+
+| Arabic Column | Meaning       | Required |
+|---------------|----------------|----------|
+| `الصنف`        | Item name      | ✅ Yes    |
+| `الكمية`       | Quantity        | ✅ Yes    |
+| `السعر`        | Unit price      | Optional |
+
+---
+
+## 🧑‍💻 How to Run Locally
+
+1. Clone the repo:
+   ```bash
+   git clone https://github.com/your-username/denta-quick-order-merger.git
+   cd denta-quick-order-merger
