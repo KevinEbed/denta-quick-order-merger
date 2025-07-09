@@ -12,7 +12,7 @@ st.set_page_config(page_title="Denta Quick Merger", page_icon="🦷", layout="ce
 # ----------------------------
 # LOGO + HEADER
 # ----------------------------
-logo = Image.open("logo.png")  # Add your logo here
+logo = Image.open("DentaQuickEgypt.png")  # Add your logo here
 st.image(logo)
 st.markdown("<h2 style='text-align: center; color: #3B7A57;'>🦷 Denta Quick – Branch Order Merger</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center;'>Upload old and (optionally) new branch order Excel files. Each sheet must start from row 15 and include columns: <strong>الصنف</strong> and <strong>الكمية</strong>.</p>", unsafe_allow_html=True)
