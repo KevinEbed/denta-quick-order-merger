@@ -5,6 +5,7 @@ from functools import reduce
 from PIL import Image
 import os
 
+# ------------------------------ Page Setup ------------------------------ #
 st.set_page_config(page_title="Denta Quick Merger", page_icon="🦷", layout="centered")
 
 if os.path.exists("DentaQuickEgypt.png"):
@@ -12,127 +13,138 @@ if os.path.exists("DentaQuickEgypt.png"):
     st.image(logo)
 
 st.markdown("<h2 style='text-align: center; color: #3B7A57;'>🦷 Denta Quick – Branch Order Merger</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Upload old and (optionally) new branch order Excel files. Each sheet must start from row 15 and include columns: <strong>الصنف</strong>, <strong>الكمية</strong>, and optionally <strong>السعر</strong>.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Upload OLD and (optional) NEW order files. Headers can start on <strong>row 1</strong> or <strong>row 15</strong>. All valid sheets will be combined and summarized.</p>", unsafe_allow_html=True)
 st.divider()
 
+# ------------------------------ Upload Section ------------------------------ #
 st.subheader("🗂️ Step 1: Upload Excel Files")
 old_file = st.file_uploader("Upload OLD Orders File (multi-sheet Excel)", type=["xlsx"])
 new_file = st.file_uploader("Upload NEW Orders File (optional)", type=["xlsx"])
 
-def process_multisheet_excel(uploaded_file, header_row=14):
-    all_sheets = pd.read_excel(uploaded_file, sheet_name=None, header=header_row)
-    cleaned_sheets = {}
+# ------------------------------ Utility Functions ------------------------------ #
+def detect_and_clean_sheet(df):
+    for header_row in [0, 14]:  # Try both header locations: row 1 (index 0), row 15 (index 14)
+        temp_df = pd.read_excel(df, header=header_row)
+        if 'الصنف' in temp_df.columns and 'الكمية' in temp_df.columns:
+            return pd.read_excel(df, sheet_name=None, header=header_row)
+    return {}
+
+def normalize_columns(df):
+    rename_map = {
+        'الصنف': 'product',
+        'product': 'product',
+        'الكمية': 'quantity',
+        'QYT': 'quantity',
+        'vendor': 'vendor',
+        'السعر': 'price'
+    }
+    df = df.rename(columns={col: rename_map.get(col, col) for col in df.columns})
+    if 'product' in df.columns and 'quantity' in df.columns:
+        df['product'] = df['product'].astype(str).str.strip().str.lower()
+        return df[['product', 'quantity'] + ([col for col in ['price'] if col in df.columns])]
+    return pd.DataFrame()
+
+def process_file(uploaded_file):
+    all_sheets_combined = pd.DataFrame()
     price_df = pd.DataFrame()
 
-    for name, df in all_sheets.items():
-        if 'الصنف' in df.columns and 'الكمية' in df.columns:
-            temp = df[['الصنف', 'الكمية']].dropna()
-            temp['الصنف'] = temp['الصنف'].astype(str).str.strip().str.lower()
-            temp = temp.groupby('الصنف', as_index=False).sum()
-            temp.columns = ['الصنف', name]
-            cleaned_sheets[name] = temp
+    excel_sheets = pd.read_excel(uploaded_file, sheet_name=None, header=None)
 
-            # extract price if available
-            if 'السعر' in df.columns:
-                price_temp = df[['الصنف', 'السعر']].dropna()
-                price_temp['الصنف'] = price_temp['الصنف'].astype(str).str.strip().str.lower()
-                price_df = pd.concat([price_df, price_temp], ignore_index=True)
+    for sheet_name, raw_df in excel_sheets.items():
+        for header_row in [0, 14]:
+            try:
+                df = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=header_row)
+                df = normalize_columns(df)
+                if not df.empty:
+                    grouped = df.groupby('product', as_index=False).sum(numeric_only=True)
+                    all_sheets_combined = pd.concat([all_sheets_combined, grouped], ignore_index=True)
+                    if 'price' in df.columns:
+                        price_df = pd.concat([price_df, df[['product', 'price']].dropna()], ignore_index=True)
+                    break  # Header found, stop searching
+            except Exception:
+                continue
 
-    # Deduplicate price by keeping first occurrence
+    # Group again after full concatenation
+    final_df = all_sheets_combined.groupby('product', as_index=False).sum()
     if not price_df.empty:
-        price_df = price_df.drop_duplicates(subset='الصنف')
-        price_df = price_df.groupby('الصنف', as_index=False).first()
+        price_df = price_df.drop_duplicates(subset='product').groupby('product', as_index=False).first()
+    return final_df, price_df
 
-    return cleaned_sheets, price_df
+def merge_quantities(df_old, df_new):
+    combined = pd.merge(df_old, df_new, on='product', how='outer', suffixes=('_old', '_new')).fillna(0)
+    combined['Total Quantity'] = combined['quantity_old'] + combined['quantity_new']
+    return combined
 
-def merge_sheets(sheet_dict):
-    if not sheet_dict:
-        return pd.DataFrame()
-    return reduce(lambda left, right: pd.merge(left, right, on='الصنف', how='outer'), sheet_dict.values()).fillna(0)
-
-def to_excel(df):
+def to_excel(dfs: dict):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name="Merged Orders")
+        for name, df in dfs.items():
+            df.to_excel(writer, index=False, sheet_name=name)
     return output.getvalue()
 
+# ------------------------------ Main Processing ------------------------------ #
 if old_file:
     try:
-        old_sheets, old_prices = process_multisheet_excel(old_file)
-        old_merged = merge_sheets(old_sheets)
+        df_old, prices_old = process_file(old_file)
+        df_old['product'] = df_old['product'].str.title()
+        df_old.rename(columns={'quantity': 'Old Quantity'}, inplace=True)
 
-        if not old_merged.empty:
-            old_cols = [col for col in old_merged.columns if col != 'الصنف']
-            old_merged['Old Quantity'] = old_merged[old_cols].sum(axis=1)
-            old_merged['الصنف'] = old_merged['الصنف'].str.title()
-            df_old_summary = old_merged[['الصنف', 'Old Quantity']].copy()
+        st.subheader("📋 Summary of OLD Orders")
+        st.dataframe(df_old, use_container_width=True)
 
-            st.subheader("📋 Step 2: Summary of OLD Orders")
-            st.dataframe(df_old_summary, use_container_width=True)
+        if new_file:
+            df_new, prices_new = process_file(new_file)
+            df_new['product'] = df_new['product'].str.title()
+            df_new.rename(columns={'quantity': 'New Quantity'}, inplace=True)
 
-            # Try to prepare السعر from old or fallback to new
-            price_df = old_prices.copy()
+            st.subheader("📋 Summary of NEW Orders")
+            st.dataframe(df_new, use_container_width=True)
 
-            if new_file:
-                new_sheets, new_prices = process_multisheet_excel(new_file)
-                new_merged = merge_sheets(new_sheets)
+            combined = merge_quantities(df_old, df_new)
 
-                if not new_merged.empty:
-                    new_cols = [col for col in new_merged.columns if col != 'الصنف']
-                    new_merged['New Quantity'] = new_merged[new_cols].sum(axis=1)
-                    new_merged['الصنف'] = new_merged['الصنف'].str.title()
-                    df_new_summary = new_merged[['الصنف', 'New Quantity']].copy()
+            # Add price (prefer old price, then new)
+            prices_old['product'] = prices_old['product'].str.title()
+            prices_new['product'] = prices_new['product'].str.title()
+            price_df = pd.concat([prices_old, prices_new], ignore_index=True)
+            price_df = price_df.drop_duplicates(subset='product')
 
-                    st.subheader("📋 Step 3: Summary of NEW Orders")
-                    st.dataframe(df_new_summary, use_container_width=True)
+            combined = pd.merge(combined, price_df, on='product', how='left')
+            combined = combined[['product', 'price', 'Old Quantity', 'New Quantity', 'Total Quantity']]
+            combined = combined.sort_values(by='Total Quantity', ascending=False)
 
-                    combined = pd.merge(df_old_summary, df_new_summary, on='الصنف', how='outer').fillna(0)
-                    combined['Total Quantity'] = combined['Old Quantity'] + combined['New Quantity']
+            st.subheader("📋 Summary of OLD + NEW Orders Combined")
+            st.dataframe(combined, use_container_width=True)
 
-                    # Fallback: use new_prices if old is empty
-                    if price_df.empty and not new_prices.empty:
-                        price_df = new_prices.copy()
-
-                    # Merge price
-                    if not price_df.empty:
-                        price_df['الصنف'] = price_df['الصنف'].str.title()
-                        combined = pd.merge(combined, price_df, on='الصنف', how='left')
-
-                    combined = combined[['الصنف', 'السعر', 'Old Quantity', 'New Quantity', 'Total Quantity']]
-                    combined = combined.sort_values(by='Total Quantity', ascending=False)
-
-                    st.subheader("📋 Step 4: Summary of OLD + NEW Orders with Prices")
-                    st.dataframe(combined, use_container_width=True)
-
-                    excel_data = to_excel(combined)
-                    st.subheader("📥 Step 5: Download Merged Excel Report")
-                    st.download_button(
-                        label="⬇️ Download Excel File",
-                        data=excel_data,
-                        file_name="Merged_Orders_Summary.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                else:
-                    st.warning("⚠️ The NEW file didn’t contain valid data sheets.")
-            else:
-                if not old_prices.empty:
-                    old_prices['الصنف'] = old_prices['الصنف'].str.title()
-                    df_old_summary = pd.merge(df_old_summary, old_prices, on='الصنف', how='left')
-                    df_old_summary = df_old_summary[['الصنف', 'السعر', 'Old Quantity']]
-                st.subheader("📋 Step 3: OLD Orders + Prices")
-                st.dataframe(df_old_summary, use_container_width=True)
-
-                excel_data = to_excel(df_old_summary)
-                st.subheader("📥 Step 4: Download Excel File")
-                st.download_button(
-                    label="⬇️ Download Excel File",
-                    data=excel_data,
-                    file_name="Old_Orders_With_Prices.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+            # Download
+            excel_bytes = to_excel({
+                "Old Orders": df_old,
+                "New Orders": df_new,
+                "Combined Summary": combined
+            })
+            st.download_button(
+                label="⬇️ Download Excel Report",
+                data=excel_bytes,
+                file_name="DentaQuick_Merged_Orders.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         else:
-            st.warning("⚠️ The OLD file didn’t contain valid data sheets.")
+            # Only Old
+            if not prices_old.empty:
+                prices_old['product'] = prices_old['product'].str.title()
+                df_old = pd.merge(df_old, prices_old, on='product', how='left')
+                df_old = df_old[['product', 'price', 'Old Quantity']]
+
+            st.subheader("📋 OLD Orders + Prices")
+            st.dataframe(df_old, use_container_width=True)
+
+            excel_bytes = to_excel({"Old Orders": df_old})
+            st.download_button(
+                label="⬇️ Download Excel Report",
+                data=excel_bytes,
+                file_name="DentaQuick_Old_Orders.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
     except Exception as e:
-        st.error("❌ Error while processing the uploaded files.")
+        st.error("❌ Error processing the uploaded files.")
         st.exception(e)
