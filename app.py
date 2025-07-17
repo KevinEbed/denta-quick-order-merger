@@ -5,7 +5,7 @@ from functools import reduce
 from PIL import Image
 import os
 
-st.set_page_config(page_title="Denta Quick Merger", page_icon="🦷", layout="centered")
+st.set_page_config(page_title="Denta Quick Merger", page_icon="", layout="centered")
 
 if os.path.exists("DentaQuickEgypt.png"):
     logo = Image.open("DentaQuickEgypt.png")
