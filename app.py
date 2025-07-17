@@ -19,7 +19,8 @@ st.subheader("🗂️ Step 1: Upload Excel Files")
 old_file = st.file_uploader("Upload OLD Orders File (multi-sheet Excel)", type=["xlsx"])
 new_file = st.file_uploader("Upload NEW Orders File (optional)", type=["xlsx"])
 
-# Standard column mapping
+# ------------------- Processing Functions ------------------- #
+
 def normalize_columns(df):
     col_map = {
         'product': 'الصنف',
@@ -33,7 +34,6 @@ def normalize_columns(df):
     df.columns = [col_map.get(str(c).strip().lower(), str(c).strip().lower()) for c in df.columns]
     return df
 
-# Detects correct header row within first 20 rows
 def find_header_row(df):
     for i in range(20):
         row = df.iloc[i].astype(str).str.lower()
@@ -41,7 +41,6 @@ def find_header_row(df):
             return i
     return None
 
-# Processes one uploaded Excel file
 def process_multisheet_excel(uploaded_file):
     all_sheets = pd.read_excel(uploaded_file, sheet_name=None, header=None)
     cleaned_sheets = {}
@@ -60,7 +59,6 @@ def process_multisheet_excel(uploaded_file):
                 temp.columns = ['الصنف', name]
                 cleaned_sheets[name] = temp
 
-                # Get السعر if available
                 if 'السعر' in df.columns:
                     price_temp = df[['الصنف', 'السعر']].dropna()
                     price_temp['الصنف'] = price_temp['الصنف'].astype(str).str.strip().str.lower()
@@ -83,7 +81,8 @@ def to_excel(df):
         df.to_excel(writer, index=False, sheet_name="Merged Orders")
     return output.getvalue()
 
-# App logic
+# ------------------------- Main App Logic ------------------------- #
+
 if old_file:
     try:
         old_sheets, old_prices = process_multisheet_excel(old_file)
