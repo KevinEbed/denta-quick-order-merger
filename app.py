@@ -22,22 +22,27 @@ new_file = st.file_uploader("Upload NEW Orders File (optional)", type=["xlsx"])
 # ------------------- Processing Functions ------------------- #
 
 def normalize_columns(df):
-    col_map = {
-        'product': 'الصنف',
-        'qyt': 'الكمية',
-        'الكمية': 'الكمية',
-        'الصنف': 'الصنف',
-        'vendor': 'vendor',
-        'السعر': 'السعر',
-        'price': 'السعر'
-    }
-    df.columns = [col_map.get(str(c).strip().lower(), str(c).strip().lower()) for c in df.columns]
+    quantity_aliases = ['qyt', 'quantity', 'number', 'count', 'الكمية', 'عدد']
+    product_aliases = ['product', 'item', 'description', 'اسم الصنف', 'الصنف']
+    price_aliases = ['price', 'السعر']
+
+    def get_standard_name(col):
+        col = str(col).strip().lower()
+        if col in quantity_aliases:
+            return 'الكمية'
+        elif col in product_aliases:
+            return 'الصنف'
+        elif col in price_aliases:
+            return 'السعر'
+        return col  # Keep extra columns as-is
+
+    df.columns = [get_standard_name(c) for c in df.columns]
     return df
 
 def find_header_row(df):
-    for i in range(20):
+    for i in range(min(20, len(df))):
         row = df.iloc[i].astype(str).str.lower()
-        if any(val in row.values for val in ['الصنف', 'product']):
+        if any(val in row.values for val in ['الصنف', 'product', 'item', 'اسم الصنف']):
             return i
     return None
 
@@ -52,12 +57,17 @@ def process_multisheet_excel(uploaded_file):
             df = pd.read_excel(uploaded_file, sheet_name=name, header=header_row)
             df = normalize_columns(df)
 
-            if 'الصنف' in df.columns and 'الكمية' in df.columns:
-                temp = df[['الصنف', 'الكمية']].dropna()
+            if 'الصنف' in df.columns:
+                temp = df.copy()
                 temp['الصنف'] = temp['الصنف'].astype(str).str.strip().str.lower()
-                temp = temp.groupby('الصنف', as_index=False).sum()
-                temp.columns = ['الصنف', name]
-                cleaned_sheets[name] = temp
+
+                # Find the quantity column
+                quantity_col = next((col for col in df.columns if col == 'الكمية'), None)
+
+                if quantity_col:
+                    grouped = temp.groupby('الصنف', as_index=False)[quantity_col].sum()
+                    grouped.columns = ['الصنف', name]
+                    cleaned_sheets[name] = grouped
 
                 if 'السعر' in df.columns:
                     price_temp = df[['الصنف', 'السعر']].dropna()
