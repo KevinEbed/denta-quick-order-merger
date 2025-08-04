@@ -143,6 +143,7 @@ def process_equipment_summary(files_uploaded):
 
     combined = pd.concat(all_data, ignore_index=True)
     grouped = combined.groupby(['equipment_name', 'notes'], dropna=False)['number'].sum().reset_index()
+    grouped['notes'] = grouped['notes'].fillna('').astype(str).str.strip()
     return grouped
 
 # ------------------------- Main Logic ------------------------- #
