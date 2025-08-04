@@ -12,7 +12,7 @@ if os.path.exists("DentaQuickEgypt.png"):
     st.image(logo)
 
 st.markdown("<h2 style='text-align: center; color: #3B7A57;'>🦷 Denta Quick – Branch Order Merger</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Upload old and (optionally) new branch order Excel files. Handles both old and new formats automatically.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Upload old and (optionally) new branch order Excel files. Handles both order and equipment formats automatically.</p>", unsafe_allow_html=True)
 st.divider()
 
 st.subheader("🗂️ Step 1: Upload Excel Files")
@@ -22,9 +22,11 @@ new_file = st.file_uploader("Upload NEW Orders File (optional)", type=["xlsx"])
 # ------------------- Processing Functions ------------------- #
 
 def normalize_columns(df):
-    quantity_aliases = ['qyt', 'quantity', 'number', 'count', 'الكمية', 'عدد']
-    product_aliases = ['product', 'item', 'description', 'اسم الصنف', 'الصنف']
+    quantity_aliases = ['qyt', 'quantity', 'number', 'count', 'الكمية', 'عدد', 'العدد']
+    product_aliases = ['product', 'item', 'description', 'اسم الصنف', 'الصنف', 'equipment name', 'اسم الجهاز']
     price_aliases = ['price', 'السعر']
+    notes_aliases = ['notes', 'ملاحظات']
+    serial_aliases = ['serial', 'مسلسل']
 
     def get_standard_name(col):
         col = str(col).strip().lower()
@@ -34,6 +36,10 @@ def normalize_columns(df):
             return 'الصنف'
         elif col in price_aliases:
             return 'السعر'
+        elif col in notes_aliases:
+            return 'ملاحظات'
+        elif col in serial_aliases:
+            return 'مسلسل'
         return col  # Keep extra columns as-is
 
     df.columns = [get_standard_name(c) for c in df.columns]
@@ -42,7 +48,7 @@ def normalize_columns(df):
 def find_header_row(df):
     for i in range(min(20, len(df))):
         row = df.iloc[i].astype(str).str.lower()
-        if any(val in row.values for val in ['الصنف', 'product', 'item', 'اسم الصنف']):
+        if any(val in row.values for val in ['الصنف', 'product', 'اسم الجهاز', 'equipment name']):
             return i
     return None
 
@@ -73,6 +79,13 @@ def process_multisheet_excel(uploaded_file):
                     price_temp = df[['الصنف', 'السعر']].dropna()
                     price_temp['الصنف'] = price_temp['الصنف'].astype(str).str.strip().str.lower()
                     price_df = pd.concat([price_df, price_temp], ignore_index=True)
+
+                # If the sheet is more like an inventory list with notes, we keep them
+                if 'ملاحظات' in df.columns or 'مسلسل' in df.columns:
+                    df['الصنف'] = df['الصنف'].str.title()
+                    notes_cols = [c for c in ['مسلسل', 'الصنف', 'الكمية', 'ملاحظات'] if c in df.columns]
+                    st.subheader(f"📋 Sheet: {name}")
+                    st.dataframe(df[notes_cols], use_container_width=True)
 
     if not price_df.empty:
         price_df = price_df.drop_duplicates(subset='الصنف')
@@ -155,7 +168,7 @@ if old_file:
                 st.subheader("📥 Step 4: Download Excel File")
                 st.download_button("⬇️ Download Excel File", data=excel_data, file_name="Old_Orders_With_Prices.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         else:
-            st.warning("⚠️ The OLD file didn’t contain valid data sheets.")
+            st.warning("⚠️ The OLD file didn’t contain valid quantity data to merge.")
     except Exception as e:
         st.error("❌ Error while processing the uploaded files.")
         st.exception(e)
