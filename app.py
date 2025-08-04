@@ -12,163 +12,90 @@ if os.path.exists("DentaQuickEgypt.png"):
     st.image(logo)
 
 st.markdown("<h2 style='text-align: center; color: #3B7A57;'>🦷 Denta Quick – Branch Order Merger</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Upload old and (optionally) new branch order Excel files. Handles both order and equipment formats automatically.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Upload old and (optionally) new branch order Excel files. Handles both old and new formats automatically.</p>", unsafe_allow_html=True)
 st.divider()
 
 st.subheader("🗂️ Step 1: Upload Excel Files")
-old_file = st.file_uploader("Upload OLD Orders File (multi-sheet Excel)", type=["xlsx"])
-new_file = st.file_uploader("Upload NEW Orders File (optional)", type=["xlsx"])
+uploaded_file = st.file_uploader("Upload Orders File (multi-sheet Excel)", type=["xlsx"])
 
-# ------------------- Processing Functions ------------------- #
+# ----------- New Generalized Header Logic -----------
 
-def normalize_columns(df):
-    quantity_aliases = ['qyt', 'quantity', 'number', 'count', 'الكمية', 'عدد', 'العدد']
-    product_aliases = ['product', 'item', 'description', 'اسم الصنف', 'الصنف', 'equipment name', 'اسم الجهاز']
-    price_aliases = ['price', 'السعر']
-    notes_aliases = ['notes', 'ملاحظات']
-    serial_aliases = ['serial', 'مسلسل']
+HEADER_KEYWORDS = {
+    'equipment_name': ['equipment name', 'اسم الجهاز', 'الصنف', 'item', 'product'],
+    'number': ['number', 'العدد', 'qty', 'quantity', 'qyt', 'الكمية'],
+    'notes': ['notes', 'ملاحظات'],
+    'serial': ['serial', 'رقم', 'الرقم']
+}
 
-    def get_standard_name(col):
-        col = str(col).strip().lower()
-        if col in quantity_aliases:
-            return 'الكمية'
-        elif col in product_aliases:
-            return 'الصنف'
-        elif col in price_aliases:
-            return 'السعر'
-        elif col in notes_aliases:
-            return 'ملاحظات'
-        elif col in serial_aliases:
-            return 'مسلسل'
-        return col  # Keep extra columns as-is
-
-    df.columns = [get_standard_name(c) for c in df.columns]
-    return df
+def detect_column(col):
+    col = str(col).strip().lower()
+    for key, options in HEADER_KEYWORDS.items():
+        if any(opt in col for opt in options):
+            return key
+    return col
 
 def find_header_row(df):
     for i in range(min(20, len(df))):
-        row = df.iloc[i].astype(str).str.lower()
-        if any(val in row.values for val in ['الصنف', 'product', 'اسم الجهاز', 'equipment name']):
+        row = df.iloc[i].astype(str).str.lower().tolist()
+        if any(any(h in cell for h in HEADER_KEYWORDS['equipment_name']) for cell in row):
             return i
     return None
 
-def process_multisheet_excel(uploaded_file):
-    all_sheets = pd.read_excel(uploaded_file, sheet_name=None, header=None)
-    cleaned_sheets = {}
-    price_df = pd.DataFrame()
+def process_multisheet_general(file):
+    xl = pd.ExcelFile(file)
+    all_data = []
 
-    for name, raw_df in all_sheets.items():
-        header_row = find_header_row(raw_df)
-        if header_row is not None:
-            df = pd.read_excel(uploaded_file, sheet_name=name, header=header_row)
-            df = normalize_columns(df)
+    for sheet_name in xl.sheet_names:
+        df_raw = xl.parse(sheet_name, header=None)
+        header_row = find_header_row(df_raw)
+        if header_row is None:
+            continue
 
-            if 'الصنف' in df.columns:
-                temp = df.copy()
-                temp['الصنف'] = temp['الصنف'].astype(str).str.strip().str.lower()
+        df = xl.parse(sheet_name, header=header_row)
+        df.columns = [detect_column(c) for c in df.columns]
 
-                # Find the quantity column
-                quantity_col = next((col for col in df.columns if col == 'الكمية'), None)
+        for col in ['equipment_name', 'number']:
+            if col not in df.columns:
+                df[col] = None
 
-                if quantity_col:
-                    grouped = temp.groupby('الصنف', as_index=False)[quantity_col].sum()
-                    grouped.columns = ['الصنف', name]
-                    cleaned_sheets[name] = grouped
+        if 'notes' not in df.columns:
+            df['notes'] = ''
 
-                if 'السعر' in df.columns:
-                    price_temp = df[['الصنف', 'السعر']].dropna()
-                    price_temp['الصنف'] = price_temp['الصنف'].astype(str).str.strip().str.lower()
-                    price_df = pd.concat([price_df, price_temp], ignore_index=True)
+        df = df[['equipment_name', 'number', 'notes']].dropna(subset=['equipment_name'])
+        df['equipment_name'] = df['equipment_name'].astype(str).str.strip().str.title()
+        df['notes'] = df['notes'].astype(str).str.strip()
+        df['number'] = pd.to_numeric(df['number'], errors='coerce').fillna(0)
 
-                # If the sheet is more like an inventory list with notes, we keep them
-                if 'ملاحظات' in df.columns or 'مسلسل' in df.columns:
-                    df['الصنف'] = df['الصنف'].str.title()
-                    notes_cols = [c for c in ['مسلسل', 'الصنف', 'الكمية', 'ملاحظات'] if c in df.columns]
-                    st.subheader(f"📋 Sheet: {name}")
-                    st.dataframe(df[notes_cols], use_container_width=True)
+        all_data.append(df)
 
-    if not price_df.empty:
-        price_df = price_df.drop_duplicates(subset='الصنف')
-        price_df = price_df.groupby('الصنف', as_index=False).first()
-
-    return cleaned_sheets, price_df
-
-def merge_sheets(sheet_dict):
-    if not sheet_dict:
+    if all_data:
+        combined_df = pd.concat(all_data, ignore_index=True)
+        summary_df = combined_df.groupby(['equipment_name', 'notes'], dropna=False)['number'].sum().reset_index()
+        summary_df = summary_df.sort_values(by='number', ascending=False)
+        return summary_df
+    else:
         return pd.DataFrame()
-    return reduce(lambda left, right: pd.merge(left, right, on='الصنف', how='outer'), sheet_dict.values()).fillna(0)
 
 def to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name="Merged Orders")
+        df.to_excel(writer, index=False, sheet_name="Merged Summary")
     return output.getvalue()
 
-# ------------------------- Main App Logic ------------------------- #
+# ----------- Streamlit Execution -----------
 
-if old_file:
+if uploaded_file:
     try:
-        old_sheets, old_prices = process_multisheet_excel(old_file)
-        old_merged = merge_sheets(old_sheets)
+        result_df = process_multisheet_general(uploaded_file)
+        if not result_df.empty:
+            st.subheader("📋 Combined Equipment Summary")
+            st.dataframe(result_df, use_container_width=True)
 
-        if not old_merged.empty:
-            old_cols = [col for col in old_merged.columns if col != 'الصنف']
-            old_merged['Old Quantity'] = old_merged[old_cols].sum(axis=1)
-            old_merged['الصنف'] = old_merged['الصنف'].str.title()
-            df_old_summary = old_merged[['الصنف', 'Old Quantity']].copy()
-
-            st.subheader("📋 Step 2: Summary of OLD Orders")
-            st.dataframe(df_old_summary, use_container_width=True)
-
-            price_df = old_prices.copy()
-
-            if new_file:
-                new_sheets, new_prices = process_multisheet_excel(new_file)
-                new_merged = merge_sheets(new_sheets)
-
-                if not new_merged.empty:
-                    new_cols = [col for col in new_merged.columns if col != 'الصنف']
-                    new_merged['New Quantity'] = new_merged[new_cols].sum(axis=1)
-                    new_merged['الصنف'] = new_merged['الصنف'].str.title()
-                    df_new_summary = new_merged[['الصنف', 'New Quantity']].copy()
-
-                    st.subheader("📋 Step 3: Summary of NEW Orders")
-                    st.dataframe(df_new_summary, use_container_width=True)
-
-                    combined = pd.merge(df_old_summary, df_new_summary, on='الصنف', how='outer').fillna(0)
-                    combined['Total Quantity'] = combined['Old Quantity'] + combined['New Quantity']
-
-                    if price_df.empty and not new_prices.empty:
-                        price_df = new_prices.copy()
-
-                    if not price_df.empty:
-                        price_df['الصنف'] = price_df['الصنف'].str.title()
-                        combined = pd.merge(combined, price_df, on='الصنف', how='left')
-
-                    combined = combined[['الصنف', 'السعر', 'Old Quantity', 'New Quantity', 'Total Quantity']]
-                    combined = combined.sort_values(by='Total Quantity', ascending=False)
-
-                    st.subheader("📋 Step 4: Summary of OLD + NEW Orders with Prices")
-                    st.dataframe(combined, use_container_width=True)
-
-                    excel_data = to_excel(combined)
-                    st.subheader("📥 Step 5: Download Merged Excel Report")
-                    st.download_button("⬇️ Download Excel File", data=excel_data, file_name="Merged_Orders_Summary.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                else:
-                    st.warning("⚠️ The NEW file didn’t contain valid data sheets.")
-            else:
-                if not old_prices.empty:
-                    old_prices['الصنف'] = old_prices['الصنف'].str.title()
-                    df_old_summary = pd.merge(df_old_summary, old_prices, on='الصنف', how='left')
-                    df_old_summary = df_old_summary[['الصنف', 'السعر', 'Old Quantity']]
-                st.subheader("📋 Step 3: OLD Orders + Prices")
-                st.dataframe(df_old_summary, use_container_width=True)
-
-                excel_data = to_excel(df_old_summary)
-                st.subheader("📥 Step 4: Download Excel File")
-                st.download_button("⬇️ Download Excel File", data=excel_data, file_name="Old_Orders_With_Prices.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            excel_data = to_excel(result_df)
+            st.subheader("📥 Download Summary Report")
+            st.download_button("⬇️ Download Excel File", data=excel_data, file_name="Combined_Equipment_Summary.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         else:
-            st.warning("⚠️ The OLD file didn’t contain valid quantity data to merge.")
+            st.warning("⚠️ No valid sheets or data found in the file.")
     except Exception as e:
-        st.error("❌ Error while processing the uploaded files.")
+        st.error("❌ Error while processing the uploaded file.")
         st.exception(e)
